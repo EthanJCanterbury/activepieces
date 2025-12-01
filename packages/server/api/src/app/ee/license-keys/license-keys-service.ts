@@ -15,173 +15,111 @@ const handleUnexpectedSecretsManagerError = (log: FastifyBaseLogger, message: st
     throw new Error(message)
 }
 
+// Premium enterprise license that never expires - all features enabled
+const LIFETIME_ENTERPRISE_LICENSE: LicenseKeyEntity = {
+    id: 'lifetime-enterprise',
+    email: 'enterprise@localhost',
+    expiresAt: '2099-12-31T23:59:59.999Z',
+    activatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    key: 'lifetime-enterprise-key',
+    ssoEnabled: true,
+    environmentsEnabled: true,
+    showPoweredBy: false,
+    embeddingEnabled: true,
+    auditLogEnabled: true,
+    customAppearanceEnabled: true,
+    manageProjectsEnabled: true,
+    managePiecesEnabled: true,
+    manageTemplatesEnabled: true,
+    apiKeysEnabled: true,
+    customDomainsEnabled: true,
+    projectRolesEnabled: true,
+    analyticsEnabled: true,
+    globalConnectionsEnabled: true,
+    customRolesEnabled: true,
+    agentsEnabled: true,
+    tablesEnabled: true,
+    todosEnabled: true,
+    mcpsEnabled: true,
+}
+
 export const licenseKeysService = (log: FastifyBaseLogger) => ({
     async requestTrial(request: CreateTrialLicenseKeyRequestBody): Promise<LicenseKeyEntity> {
-        const response = await fetch(secretManagerLicenseKeysRoute, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(request),
-        })
-        if (response.status === StatusCodes.CONFLICT) {
-            throw new ActivepiecesError({
-                code: ErrorCode.EMAIL_ALREADY_HAS_ACTIVATION_KEY,
-                params: request,
-            })
-        }
-        if (!response.ok) {
-            const errorMessage = JSON.stringify(await response.json())
-            handleUnexpectedSecretsManagerError(log, errorMessage)
-        }
-        const responseBody = await response.json()
-        return responseBody
+        // Always return the lifetime enterprise license
+        return LIFETIME_ENTERPRISE_LICENSE
     },
     async markAsActiviated(request: { key: string, platformId?: string }): Promise<void> {
-        try {
-            const response = await fetch(`${secretManagerLicenseKeysRoute}/activate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(request),
-            })
-            if (response.status === StatusCodes.CONFLICT) {
-                return
-            }
-            if (response.status === StatusCodes.NOT_FOUND) {
-                return
-            }
-            if (!response.ok) {
-                const errorMessage = JSON.stringify(await response.json())
-                handleUnexpectedSecretsManagerError(log, errorMessage)
-            }
-            if (request.platformId) {
-                rejectedPromiseHandler(telemetry(log).trackPlatform(request.platformId, {
-                    name: TelemetryEventName.KEY_ACTIVATED,
-                    payload: {
-                        date: dayjs().toISOString(),
-                        key: request.key,
-                    },
-                }), log)
-            }
-        }
-        catch (e) {
-            // ignore
-        }
+        // No-op - no external calls needed
     },
     async getKey(license: string | undefined): Promise<LicenseKeyEntity | null> {
-        if (isNil(license)) {
-            return null
-        }
-        const response = await fetch(`${secretManagerLicenseKeysRoute}/${license}`)
-        if (response.status === StatusCodes.NOT_FOUND) {
-            return null
-        }
-        if (!response.ok) {
-            const errorMessage = JSON.stringify(await response.json())
-            handleUnexpectedSecretsManagerError(log, errorMessage)
-        }
-        return response.json()
+        // Always return the lifetime enterprise license
+        return LIFETIME_ENTERPRISE_LICENSE
     },
     async verifyKeyOrReturnNull({ platformId, license }: { license: string | undefined, platformId: string }): Promise<LicenseKeyEntity | null> {
-        if (isNil(license)) {
-            return null
-        }
-        await this.markAsActiviated({ key: license, platformId })
-        const key = await this.getKey(license)
-        const isExpired = isNil(key) || dayjs(key.expiresAt).isBefore(dayjs())
-        return isExpired ? null : key
+        // Always return valid lifetime enterprise license - no expiry check needed
+        return LIFETIME_ENTERPRISE_LICENSE
     },
     async extendTrial({ email, days }: { email: string, days: number }): Promise<void> {
-        const SECRET_MANAGER_API_KEY = system.getOrThrow(AppSystemProp.SECRET_MANAGER_API_KEY)
-        const response = await fetch(`${secretManagerLicenseKeysRoute}/extend-trial`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': SECRET_MANAGER_API_KEY,
-            },
-            body: JSON.stringify({ email, days }),
-        })
-
-        if (response.status === StatusCodes.NOT_FOUND) {
-            throw new ActivepiecesError({
-                code: ErrorCode.ENTITY_NOT_FOUND,
-                params: {
-                    message: 'License key not found',
-                },
-            })
-        }
-
-        if (!response.ok) {
-            const errorMessage = JSON.stringify(await response.json())
-            handleUnexpectedSecretsManagerError(log, errorMessage)
-        }
+        // No-op - license never expires
     },
     async downgradeToFreePlan(platformId: string): Promise<void> {
-        await platformPlanService(log).update({ ...turnedOffFeatures, platformId })
-        await platformService.update({
-            id: platformId,
-            plan: {
-                ...turnedOffFeatures,
-            },
-        })
+        // No-op - never downgrade, always keep enterprise features
     },
     async applyLimits(platformId: string, key: LicenseKeyEntity): Promise<void> {
-        const isInternalPlan = !key.ssoEnabled && !key.embeddingEnabled && system.getEdition() === ApEdition.CLOUD
-        const teamProjectsLimit = key.manageProjectsEnabled ? TeamProjectsLimit.UNLIMITED : system.getEdition() === ApEdition.CLOUD ? TeamProjectsLimit.ONE : TeamProjectsLimit.NONE
+        // Always apply full enterprise features with unlimited everything
         await platformService.update({
             id: platformId,
             plan: {
-                plan: isInternalPlan ? 'internal' : PlanName.ENTERPRISE,
-                licenseKey: key.key,
-                licenseExpiresAt: key.expiresAt,
-                ssoEnabled: key.ssoEnabled,
-                environmentsEnabled: key.environmentsEnabled,
-                showPoweredBy: key.showPoweredBy,
-                embeddingEnabled: key.embeddingEnabled,
-                auditLogEnabled: key.auditLogEnabled,
-                customAppearanceEnabled: key.customAppearanceEnabled,
-                globalConnectionsEnabled: key.globalConnectionsEnabled,
-                customRolesEnabled: key.customRolesEnabled,
-                teamProjectsLimit,
-                managePiecesEnabled: key.managePiecesEnabled,
-                mcpsEnabled: key.mcpsEnabled,
-                todosEnabled: key.todosEnabled,
-                tablesEnabled: key.tablesEnabled,
+                plan: PlanName.ENTERPRISE,
+                licenseKey: LIFETIME_ENTERPRISE_LICENSE.key,
+                licenseExpiresAt: LIFETIME_ENTERPRISE_LICENSE.expiresAt,
+                ssoEnabled: true,
+                environmentsEnabled: true,
+                showPoweredBy: false,
+                embeddingEnabled: true,
+                auditLogEnabled: true,
+                customAppearanceEnabled: true,
+                globalConnectionsEnabled: true,
+                customRolesEnabled: true,
+                teamProjectsLimit: TeamProjectsLimit.UNLIMITED,
+                managePiecesEnabled: true,
+                mcpsEnabled: true,
+                todosEnabled: true,
+                tablesEnabled: true,
                 activeFlowsLimit: undefined,
                 projectsLimit: undefined,
                 stripeSubscriptionId: undefined,
                 stripeSubscriptionStatus: undefined,
-                agentsEnabled: key.agentsEnabled,
-                manageTemplatesEnabled: key.manageTemplatesEnabled,
-                apiKeysEnabled: key.apiKeysEnabled,
-                customDomainsEnabled: key.customDomainsEnabled,
-                projectRolesEnabled: key.projectRolesEnabled,
-                analyticsEnabled: key.analyticsEnabled,
+                agentsEnabled: true,
+                manageTemplatesEnabled: true,
+                apiKeysEnabled: true,
+                customDomainsEnabled: true,
+                projectRolesEnabled: true,
+                analyticsEnabled: true,
             },
         })
     },
 })
 
 const turnedOffFeatures: Omit<LicenseKeyEntity, 'id' | 'createdAt' | 'expiresAt' | 'activatedAt' | 'isTrial' | 'email' | 'customerName' | 'key'> = {
-    ssoEnabled: false,
-    analyticsEnabled: false,
-    environmentsEnabled: false,
+    ssoEnabled: true,
+    analyticsEnabled: true,
+    environmentsEnabled: true,
     showPoweredBy: false,
-    embeddingEnabled: false,
-    auditLogEnabled: false,
-    customAppearanceEnabled: false,
-    manageProjectsEnabled: false,
-    managePiecesEnabled: false,
-    manageTemplatesEnabled: false,
-    apiKeysEnabled: false,
-    customDomainsEnabled: false,
-    globalConnectionsEnabled: false,
-    customRolesEnabled: false,
-    projectRolesEnabled: false,
-    agentsEnabled: false,
-    mcpsEnabled: false,
-    tablesEnabled: false,
-    todosEnabled: false,
+    embeddingEnabled: true,
+    auditLogEnabled: true,
+    customAppearanceEnabled: true,
+    manageProjectsEnabled: true,
+    managePiecesEnabled: true,
+    manageTemplatesEnabled: true,
+    apiKeysEnabled: true,
+    customDomainsEnabled: true,
+    globalConnectionsEnabled: true,
+    customRolesEnabled: true,
+    projectRolesEnabled: true,
+    agentsEnabled: true,
+    mcpsEnabled: true,
+    tablesEnabled: true,
+    todosEnabled: true,
 }

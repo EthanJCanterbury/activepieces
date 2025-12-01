@@ -69,29 +69,8 @@ export const projectLimitsService = (log: FastifyBaseLogger) => ({
     },
 
     async checkAICreditsExceededLimit({ projectId, requestCostBeforeFiring }: { projectId: string, requestCostBeforeFiring: number }): Promise<boolean> {
-        if (edition === ApEdition.COMMUNITY) {
-            return false
-        }
-
-        const projectPlan = await projectLimitsService(system.globalLogger()).getOrCreateDefaultPlan(projectId)
-
-        try {
-            const platformId = await projectService.getPlatformId(projectId)
-            const platformPlan = await platformPlanService(log).getOrCreateForPlatform(platformId)
-            const { startDate, endDate } = await platformPlanService(log).getBillingDates(platformPlan)
-
-            const projectAICreditUsage = await platformUsageService(log).getProjectUsage({ projectId, metric: 'ai_credits', startDate, endDate }) + requestCostBeforeFiring
-            const platformAICreditUsage = await platformUsageService(log).getPlatformUsage({ platformId, metric: 'ai_credits', startDate, endDate }) + requestCostBeforeFiring
-
-            const aiCreditPlatformLimit = await platformReachedLimit({ platformPlan, platformUsage: platformAICreditUsage, log })
-            const aiCreditPorjectLimit = await projectReachedLimit({ projectPlan, teamProjectsLimit: platformPlan.teamProjectsLimit, projectUsage: projectAICreditUsage, log })
-
-            return aiCreditPlatformLimit || aiCreditPorjectLimit
-        }
-        catch (e) {
-            exceptionHandler.handle(e, log)
-            return false
-        }
+        // No limits - always allow AI credits
+        return false
     },
 })
 

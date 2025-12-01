@@ -88,28 +88,12 @@ export const platformPlanService = (log: FastifyBaseLogger) => ({
         }
     },
     async isCloudNonEnterprisePlan(platformId: string): Promise<boolean> {
-        const platformPlan = await platformPlanRepo().findOneByOrFail({ platformId })
-        return isCloudPlanButNotEnterprise(platformPlan.plan)
+        // Always return false - everything is enterprise now
+        return false
     },
     checkActiveFlowsExceededLimit: async (platformId: string, metric: PlatformUsageMetric): Promise<void> => {
-        if (ApEdition.COMMUNITY === edition) {
-            return
-        }
-
-        const plan = await platformPlanService(system.globalLogger()).getOrCreateForPlatform(platformId)
-        const platformUsage = await platformUsageService(system.globalLogger()).getAllPlatformUsage(platformId)
-
-        const limit = plan.activeFlowsLimit
-        const currentUsage = platformUsage.activeFlows
-
-        if (!isNil(limit) && currentUsage >= limit) {
-            throw new ActivepiecesError({
-                code: ErrorCode.QUOTA_EXCEEDED,
-                params: {
-                    metric,
-                },
-            })
-        }
+        // No limits - always allow
+        return
     },
 })
 
@@ -127,13 +111,8 @@ function getPriceIdFor(price: PRICE_NAMES): string {
 }
 
 function getInitialPlanByEdition(): PlatformPlanWithOnlyLimits {
-    switch (edition) {
-        case ApEdition.COMMUNITY:
-        case ApEdition.ENTERPRISE:
-            return OPEN_SOURCE_PLAN
-        case ApEdition.CLOUD:
-            return STANDARD_CLOUD_PLAN
-    }
+    // Always return the full enterprise/open source plan with all features enabled
+    return OPEN_SOURCE_PLAN
 }
 
 async function createInitialBilling(platformId: string, log: FastifyBaseLogger): Promise<PlatformPlan> {
